@@ -49,15 +49,16 @@ def saved_note(status: str) -> str:
     return {"READY": "profile saved", "UNCHANGED": "Steel didn't save the profile"}.get(status, f"profile {status.lower()}")
 
 
-def release_stale_sessions(profile_id: str | None) -> int:
+def release_stale_sessions(profile_id: str | None, keep: frozenset[str] = frozenset()) -> int:
     """Release live sessions a crashed run left holding the profile. Steel would keep them until
-    their timeout, and a second session on the same profile can save over the first one's work."""
+    their timeout, and a second session on the same profile can save over the first one's work.
+    Sessions in `keep`, such as a sign-in browser a person may be using, stay open."""
     if not profile_id:
         return 0
     steel = client()
     page = steel.sessions.list()
     sessions = getattr(page, "sessions", None) or getattr(page, "data", None) or list(page)
-    stale = [s for s in sessions if s.status == "live" and s.profile_id == profile_id]
+    stale = [s for s in sessions if s.status == "live" and s.profile_id == profile_id and s.id not in keep]
     for session in stale:
         progress.update("closing a session a crashed run left")
         try:

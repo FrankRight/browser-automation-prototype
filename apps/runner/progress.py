@@ -9,6 +9,9 @@ information comes as timestamped lines, with a line every few seconds while a st
     with progress.step("Reading Studio's runs"):   # or as a decorator: @progress.step("...")
         progress.update("thinking, turn 2")        # what the step is doing now
         progress.event("click at (35, 210)")       # something that happened, kept on screen
+
+The run server reads the same progress through `progress_sink`: set it to a function, and
+every step, detail and event also reaches that function as a dict, terminal or not.
 """
 import itertools
 import os
@@ -16,6 +19,9 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
+
+progress_sink: ContextVar = ContextVar("progress_sink", default=None)
 
 FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 HEARTBEAT_S = 5  # without a terminal, the longest quiet spell before a line saying what's still going on
@@ -97,20 +103,26 @@ class Progress:
             with self.lock:
                 self._tick(frame)
 
+    def _sink(self, **payload) -> None:
+        sink = progress_sink.get()
+        if sink:
+            sink(payload)
+
     # What the rest of the program calls.
 
     @contextmanager
     def step(self, label: str):
         """A step of the run: shown while it's under way, then with ✓ (✗ if it raised) and its time."""
-        if not self.enabled:
+        if not self.enabled and progress_sink.get() is None:
             yield
             return
         with self.lock:
-            if self.spinner is None:
+            if self.enabled and self.spinner is None:
                 self.spinner = threading.Thread(target=self._spin, daemon=True)
                 self.spinner.start()
-            if not self.tty:
+            if self.enabled and not self.tty:
                 self._print(f"▸ {label}", len(self.steps))
+            self._sink(kind="step", state="started", label=label, depth=len(self.steps))
             self.steps.append(_Step(label, shown=not self.tty))
         finished = False
         try:
@@ -122,28 +134,33 @@ class Progress:
                 took = time.monotonic() - step.started
                 if not self.steps:
                     self.timings.append((step.label, took))
-                note = f", {step.note}" if step.note else ""
-                self._print(f"{'✓' if finished else '✗'} {step.label} ({duration(took)}{note})", len(self.steps))
+                self._sink(kind="step", state="completed" if finished else "failed", label=step.label,
+                           depth=len(self.steps), duration_ms=round(took * 1000), note=step.note)
+                if self.enabled:
+                    note = f", {step.note}" if step.note else ""
+                    self._print(f"{'✓' if finished else '✗'} {step.label} ({duration(took)}{note})", len(self.steps))
 
     def update(self, detail: str) -> None:
         """What the current step is doing now: on the spinner line, or a line of its own without a terminal."""
-        if not self.enabled or not self.steps:
+        if not self.steps:
             return
         with self.lock:
             if detail != self.steps[-1].detail:
                 self.steps[-1].detail = detail
-                if not self.tty:
+                self._sink(kind="detail", message=detail, depth=len(self.steps))
+                if self.enabled and not self.tty:
                     self._print(detail, len(self.steps))
 
     def event(self, text: str) -> None:
         """Something that happened, kept on screen under the current step: a model action, a link to watch."""
-        if self.enabled:
-            with self.lock:
+        with self.lock:
+            self._sink(kind="event", message=text, depth=len(self.steps))
+            if self.enabled:
                 self._print(f"· {text}", len(self.steps))
 
     def note(self, text: str) -> None:
         """A few words added to the current step's line when it finishes."""
-        if self.enabled and self.steps:
+        if self.steps:
             with self.lock:
                 self.steps[-1].note = text
 

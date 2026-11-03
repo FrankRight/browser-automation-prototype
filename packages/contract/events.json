@@ -1,0 +1,18 @@
+{
+  "description": "Every event type the runner records. Names follow AGNT5's run events; browser.takeover.* are the two this prototype adds.",
+  "types": [
+    "run.started",
+    "run.paused",
+    "run.resumed",
+    "run.completed",
+    "run.failed",
+    "workflow.step.started",
+    "workflow.step.completed",
+    "workflow.step.failed",
+    "workflow.step.paused",
+    "approval.requested",
+    "progress.update",
+    "browser.takeover.started",
+    "browser.takeover.ended"
+  ]
+}

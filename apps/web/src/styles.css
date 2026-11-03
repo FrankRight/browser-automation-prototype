@@ -1,0 +1,88 @@
+@import "tailwindcss";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/geist-mono/400.css";
+
+/* Studio's look: its type, its colour tokens and square corners. Values only; no Studio code. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Poppins", "Instrument Sans Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0b0d;
+  --card: #f1f2f2;
+  --muted: #f1f2f2;
+  --muted-foreground: #676869;
+  --primary: #1c1f23;
+  --primary-foreground: #ffffff;
+  --accent: color-mix(in oklab, #1c1f23 7%, transparent);
+  --destructive: #b33027;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e5;
+  --ring: #1c1f23;
+  --warning: oklch(0.45 0.13 75);
+  --warning-foreground: oklch(0.98 0 0);
+  --success: oklch(0.42 0.17 145);
+  --info: oklch(0.45 0.15 255);
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0a0b0d;
+  --foreground: #e4e4e5;
+  --card: #1c1f23;
+  --muted: #1c1f23;
+  --muted-foreground: #acadaf;
+  --primary: #f1f2f2;
+  --primary-foreground: #1c1f23;
+  --accent: color-mix(in oklab, #ffffff 8%, transparent);
+  --destructive: #ff6b61;
+  --destructive-foreground: #0a0b0d;
+  --border: #25272a;
+  --ring: #f1f2f2;
+  --warning: oklch(0.69 0.1 75);
+  --warning-foreground: oklch(0.08 0 0);
+  --success: oklch(0.67 0.17 145);
+  --info: oklch(0.69 0.15 255);
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-background text-foreground font-sans text-sm antialiased;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-ring;
+}

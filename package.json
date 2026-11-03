@@ -1,0 +1,12 @@
+{
+  "name": "browser-prototype",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "pnpm --filter web build && cd apps/runner && uv run python server.py",
+    "build": "pnpm --filter web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter web test && cd apps/runner && uv run pytest -q tests"
+  }
+}

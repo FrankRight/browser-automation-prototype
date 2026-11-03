@@ -11,6 +11,7 @@ it's safe to; otherwise just its length.
 import secrets
 import threading
 import time
+from contextvars import ContextVar
 
 from openai import APIConnectionError, OpenAI
 
@@ -32,6 +33,10 @@ BUTTONS = {"left": "left", "right": "right", "wheel": "middle", "middle": "middl
 MODIFIERS = {"Control": "Ctrl", "Meta": "Cmd", "Alt": "Alt"}
 TURN_TIMEOUT_S = 60  # healthy turns took 31 s at most (191 measured); one still going after this is given up and tried again
 TURN_TRIES = 3
+
+# Placeholders the model may type in place of a secret, and the values sent instead. The run
+# server sets this for a run; the model only ever sees and types the placeholder.
+TYPING_SECRETS: ContextVar = ContextVar("typing_secrets", default={})
 
 
 class SafetyCheck(Exception):
@@ -55,7 +60,10 @@ def _perform(steel, session_id, action) -> None:
         steel.sessions.computer(session_id, action="scroll", coordinates=[action.x, action.y],
                                 delta_x=action.scroll_x or 0, delta_y=action.scroll_y or 0)
     elif kind == "type":
-        steel.sessions.computer(session_id, action="type_text", text=action.text)
+        text = action.text
+        for placeholder, value in TYPING_SECRETS.get().items():
+            text = text.replace(placeholder, value)
+        steel.sessions.computer(session_id, action="type_text", text=text)
     elif kind == "keypress":
         steel.sessions.computer(session_id, action="press_key", keys=[KEYS.get(k.upper(), k) for k in action.keys])
     elif kind == "move":

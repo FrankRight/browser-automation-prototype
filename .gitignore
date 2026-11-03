@@ -3,3 +3,6 @@ state/
 __pycache__/
 *.png
 .env.local
+node_modules/
+dist/
+*.tsbuildinfo
