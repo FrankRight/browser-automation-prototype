@@ -1,30 +1,44 @@
-"""The Studio check: read the project's runs from Studio and check them against the AGNT5 API.
+"""The Studio check: read the project's runs from Studio, check them against the AGNT5 API,
+and, if they all match, create a service key the way a customer would.
 
     uv run python studio_check.py
 
 Messages for the person go to the terminal (stderr); the result is printed as JSON (stdout).
-When the saved login is missing or expired, the program opens Studio's sign-in page in a
+When a browser step finds Studio signed out, the program opens Studio's sign-in page in a
 Steel session, shows its links, and waits for "done". After three "done" answers that
 leave Studio signed out, it stops.
 
-An agent then compares the runs with the API. Runs read from screenshots can be misread,
-so when anything disagrees, the program reads Studio again and re-checks those runs: a
-disagreement the second read doesn't repeat is reported as a misread, not a mismatch.
+An agent compares the runs with the API. Runs read from screenshots can be misread, so when
+anything disagrees, the program reads Studio again and re-checks those runs: a disagreement
+the second read doesn't repeat is reported as a misread, not a mismatch.
+
+The service key is a real credential, so a person approves its exact name first. The
+approved name is kept in state/ until the write is finished, so a run that crashed resumes
+without a second approval, and the write step looks for the key before creating it. The
+key is revoked at the end.
 """
 import json
+import os
+import secrets
 import sys
 import time
+from datetime import date
 
 from openai import APIError
 from steel import APIError as SteelAPIError
 
+from agnt5_api import revoke_service_key, service_keys
 from api_runs import RunIndex
 from compare import compare, confirm, suspects
-from config import save_profile_id, saved_profile_id
+from config import STATE_DIR, save_profile_id, saved_profile_id
+from create_key import create_service_key
 from login_window import LOGIN_TIMEOUT_MS, close_login_window, is_open, open_login_window
 from read_runs import read_runs
+from steel_session import release_stale_sessions
 
 MAX_LOGINS = 3
+MAX_WRITE_TRIES = 3
+PENDING_WRITE = STATE_DIR / "write.json"  # the approved key name, until the write is done
 
 
 def tell(message: str) -> None:
@@ -45,12 +59,12 @@ def wait_for_done(ask) -> None:
         pass
 
 
-def read_with_login(ask) -> tuple[dict, str | None]:
-    """Read the runs, pausing for a person to sign in when Studio asks. Returns the result and profile."""
+def with_login(step, ask) -> tuple[dict, str | None]:
+    """Run a browser step, pausing for a person to sign in whenever it reports needs_login."""
     profile_id = saved_profile_id()
     logins = 0
     while True:
-        result = read_runs(profile_id)
+        result = step(profile_id)
         if result.get("status") != "needs_login":
             return result, profile_id
         if logins == MAX_LOGINS:
@@ -76,8 +90,59 @@ def read_with_login(ask) -> tuple[dict, str | None]:
                 tell("Steel didn't save that sign-in session, so the login may not have been kept.")
 
 
+def approved_key_name(ask) -> str | None:
+    """The key name a person approved: resumed from an unfinished write, or asked for now."""
+    if PENDING_WRITE.exists():
+        name = json.loads(PENDING_WRITE.read_text())["name"]
+        tell(f'\nResuming the approved write: service key "{name}".')
+        return name
+    name = f"studio-check-{date.today():%Y-%m-%d}-{secrets.token_hex(2)}"  # computed once, then kept
+    try:
+        answer = ask(f'\nThe runs match. Create the service key "{name}" in Studio? Type yes to approve: ')
+    except EOFError:
+        return None
+    if answer.strip().lower() != "yes":
+        return None
+    STATE_DIR.mkdir(exist_ok=True)
+    PENDING_WRITE.write_text(json.dumps({"name": name}))
+    os.chmod(PENDING_WRITE, 0o600)
+    return name
+
+
+def write_key(ask) -> dict:
+    name = approved_key_name(ask)
+    if name is None:
+        return {"status": "declined"}
+    for _ in range(MAX_WRITE_TRIES):
+        outcome, _ = with_login(lambda profile_id: create_service_key(profile_id, name), ask)
+        if outcome["status"] in ("created", "exists"):
+            break
+        if outcome["status"] != "unclear":  # nothing was submitted; the approval stays for the next run
+            return {**outcome, "name": name}
+        reply = ""
+        while reply not in ("created", "not created"):
+            reply = ask(f'\nStudio may or may not have created "{name}". Check its Service keys page, '
+                        f'then type "created" or "not created": ').strip().lower()
+        if reply == "created":
+            outcome = {"status": "created", "name": name, "confirmed_by": "person"}
+            break
+    else:
+        return {"status": "unclear", "name": name, "detail": f"still unclear after {MAX_WRITE_TRIES} tries"}
+    # Clean up: the key is a real credential and only a test of the write.
+    keys = service_keys(name)
+    for key in keys:
+        if not key.get("revoked_at"):
+            revoke_service_key(key["id"])
+    revoked = all(key.get("revoked_at") for key in service_keys(name))
+    PENDING_WRITE.unlink()
+    return {**outcome, "keys_with_this_name": len(keys), "revoked": revoked}
+
+
 def check(ask=ask_terminal) -> dict:
-    result, profile_id = read_with_login(ask)
+    stale = release_stale_sessions(saved_profile_id())
+    if stale:
+        tell(f"Released {stale} Steel session(s) a crashed run left holding the profile.")
+    result, profile_id = with_login(read_runs, ask)
     if result.get("status") != "ok":
         return result
     runs = result["runs"]
@@ -93,7 +158,7 @@ def check(ask=ask_terminal) -> dict:
             tell(f"Couldn't read Studio again ({again.get('status')}), so these stay unconfirmed.")
     problems = {m["time"] for m in survived["mismatches"]} | {n["time"] for n in survived["not_in_api"]}
     unchecked = {u["time"] for u in first["unchecked"]}
-    return {
+    report = {
         "status": "ok",
         "checked": len(runs) - len(unchecked),
         "matching": sum(1 for run in runs if run["time"] not in problems | unchecked),
@@ -101,8 +166,13 @@ def check(ask=ask_terminal) -> dict:
         "not_in_api": survived["not_in_api"],
         "misreads": misreads["mismatches"] + misreads["not_in_api"],
         "unchecked": first["unchecked"],
-        "runs": runs,
     }
+    if problems or unchecked:
+        report["write"] = {"status": "skipped", "detail": "the runs don't all match the API"}
+    else:
+        report["write"] = write_key(ask)
+    report["runs"] = runs
+    return report
 
 
 if __name__ == "__main__":

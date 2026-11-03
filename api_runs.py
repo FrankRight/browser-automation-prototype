@@ -3,19 +3,15 @@
 Studio's runs table shows no run IDs, so a run is found by its enqueue time: to the second,
 in the browser's time zone, formatted like Studio's TIME column ("Oct 27, 13:01:14").
 """
-import json
-import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from config import BROWSER_TIME_ZONE, STUDIO_API_URL, STUDIO_PROJECT_ID, studio_api_key
+from agnt5_api import request
+from config import BROWSER_TIME_ZONE, STUDIO_PROJECT_ID
 
 
 def _get(path: str):
-    request = urllib.request.Request(f"{STUDIO_API_URL}/api/v1{path}", headers={
-        "X-API-KEY": studio_api_key(), "Accept": "application/json", "User-Agent": "browser-prototype"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)["data"]
+    return request("GET", path)
 
 
 def as_studio_time(iso: str) -> str:

@@ -43,6 +43,24 @@ def wait_for_profile(steel: Steel, profile_id: str, saved_by: str, settle_s: flo
         time.sleep(1)
 
 
+def release_stale_sessions(profile_id: str | None) -> int:
+    """Release live sessions a crashed run left holding the profile. Steel would keep them until
+    their timeout, and a second session on the same profile can save over the first one's work."""
+    if not profile_id:
+        return 0
+    steel = client()
+    page = steel.sessions.list()
+    sessions = getattr(page, "sessions", None) or getattr(page, "data", None) or list(page)
+    stale = [s for s in sessions if s.status == "live" and s.profile_id == profile_id]
+    for session in stale:
+        try:
+            steel.sessions.release(session.id)
+        except NotFoundError:
+            continue
+        wait_for_profile(steel, profile_id, saved_by=session.id)
+    return len(stale)
+
+
 @contextmanager
 def open_session(*, profile_id=None, persist_profile=False, interactive=False, timeout_ms=300_000):
     """A live session, released when the block ends, even after an error.
