@@ -12,6 +12,8 @@ may exist. Studio shows a new key's value once; the model is told never to repea
 only its JSON answer is read, so the value can't come back through the model's text.
 """
 import json
+import os
+import signal
 
 from computer_use import work_screen
 from config import STUDIO_PROJECT_ID, STUDIO_URL
@@ -36,6 +38,9 @@ Answer with JSON only, without a code fence:
 {{"status": "submitted"}} once you've clicked the create button and closed the dialog
 {{"status": "not_submitted", "why": "<short reason>"}} if you couldn't click the create button
 {{"status": "needs_login"}} if a sign-in form or a security check appears before you submit"""
+
+
+CRASH_AFTER_CREATE = False  # set by studio_check.py --crash-after-create, to demonstrate recovery
 
 
 def _answer(text: str, allowed: set[str]) -> dict:
@@ -65,6 +70,8 @@ def create_service_key(profile_id: str, name: str) -> dict:
             made = _answer(work_screen(steel, session.id, CREATE.format(name=name)), {"submitted", "not_submitted", "needs_login"})
         except Exception as error:  # it may have clicked create before failing
             return {"status": "unclear", "name": name, "detail": f"stopped while creating: {type(error).__name__}"}
+        if CRASH_AFTER_CREATE and made and made["status"] == "submitted":
+            os.kill(os.getpid(), signal.SIGKILL)  # demo: die like `kill -9`, right after Studio made the key
         if made and made["status"] in ("not_submitted", "needs_login"):
             return {"status": made["status"], **({"why": str(made.get("why", ""))[:200]} if made.get("why") else {})}
         try:

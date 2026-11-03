@@ -32,6 +32,14 @@ When every run matches, it asks you to approve creating a service key with an ex
 
 `uv run python sign_out.py` signs the saved profile out of Studio, to try the login pause.
 
+## Run the demo
+
+1. **A normal run.** `uv run python studio_check.py`, then type `yes` at the approval. It reads the runs, checks them against the API, creates the key once and revokes it, then sums up in two lines. About two minutes.
+2. **The login pause.** `uv run python sign_out.py`, then `uv run python studio_check.py`. Open the Steel dashboard link it prints, sign in to Studio there, and type `done`. The run carries on without a restart. (`--show-live-view-link` also prints the session's live view link, which works for anyone who has it.)
+3. **A crash, and recovery.** `uv run python studio_check.py --crash-after-create`, then `yes`: it dies right after Studio creates the key, as `kill -9` would. Run `uv run python studio_check.py` again: it releases the session the crash left, resumes the approved write without asking again, finds the key instead of creating a second one, and revokes it.
+
+To watch the browser while it works, open the live session on Steel's dashboard. Don't show it on a shared screen while the key's dialog is open: Studio shows the new key's value there once.
+
 ## How it works
 
 | File | What it does |

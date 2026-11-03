@@ -1,7 +1,12 @@
 """The Studio check: read the project's runs from Studio, check them against the AGNT5 API,
 and, if they all match, create a service key the way a customer would.
 
-    uv run python studio_check.py
+    uv run python studio_check.py [--show-live-view-link] [--crash-after-create]
+
+--show-live-view-link also prints a login session's live view link, which works for anyone
+who has it; by default only Steel's dashboard link, behind a Steel sign-in, is shown.
+--crash-after-create kills the program right after Studio creates the key, as `kill -9`
+would, to show that the next run recovers without creating a second key.
 
 Messages for the person go to the terminal (stderr); the result is printed as JSON (stdout).
 When a browser step finds Studio signed out, the program opens Studio's sign-in page in a
@@ -37,6 +42,7 @@ from read_runs import read_runs
 from steel_session import release_stale_sessions
 
 MAX_LOGINS = 3
+SHOW_LIVE_VIEW_LINK = "--show-live-view-link" in sys.argv
 MAX_WRITE_TRIES = 3
 PENDING_WRITE = STATE_DIR / "write.json"  # the approved key name, until the write is done
 
@@ -75,10 +81,12 @@ def with_login(step, ask) -> tuple[dict, str | None]:
             save_profile_id(profile_id)
         try:
             ends = time.strftime("%H:%M", time.localtime(time.time() + LOGIN_TIMEOUT_MS / 1000))
+            live_view = (f"  Or its live view:          {window.live_view_url}\n"
+                         f"  (anyone with the live view link can control the session, so don't share it)\n"
+                         if SHOW_LIVE_VIEW_LINK else "")
             tell(f"\nStudio needs you to sign in (login {logins + 1} of {MAX_LOGINS}).\n"
                  f"  Open the session in Steel: {window.dashboard_url}\n"
-                 f"  Or its live view:          {window.live_view_url}\n"
-                 f"  (anyone with the live view link can control the session, so don't share it)\n"
+                 f"{live_view}"
                  f"Sign in to Studio there. The session closes by itself at {ends}.")
             wait_for_done(ask)
             if is_open(window):
@@ -175,7 +183,24 @@ def check(ask=ask_terminal) -> dict:
     return report
 
 
+def summary(result: dict) -> str:
+    """The result in a sentence or two, for the person at the terminal."""
+    if result.get("status") != "ok":
+        return f"Stopped: {result.get('status')}. {result.get('detail', '')}".strip()
+    lines = [f"Checked {result['checked']} runs: {result['matching']} match the API, "
+             f"{len(result['mismatches'])} mismatch, {len(result['not_in_api'])} not in the API, "
+             f"{len(result['misreads'])} misread and corrected."]
+    write = result.get("write", {})
+    outcomes = {"created": "created once, then revoked", "exists": "already there, so not created again; revoked",
+                "declined": "not approved, so nothing was created", "skipped": "skipped, because the runs don't all match"}
+    name = f' "{write["name"]}"' if write.get("name") else ""
+    lines.append(f"Service key{name}: {outcomes.get(write.get('status'), write.get('status'))}.")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
+    import create_key
+    create_key.CRASH_AFTER_CREATE = "--crash-after-create" in sys.argv
     try:
         result = check()
     except (TimeoutError, APIError, SteelAPIError) as error:
@@ -184,6 +209,7 @@ if __name__ == "__main__":
         result = {"status": "login_abandoned", "detail": "the terminal closed before anyone answered"}
     if result.get("status") == "login_failed":
         tell(f"\nStopped: {result['detail']}. Check the account, then run the check again.")
+    tell("\n" + summary(result))
     json.dump(result, sys.stdout, indent=1)
     print()
     sys.exit(0 if result.get("status") == "ok" else 1)
