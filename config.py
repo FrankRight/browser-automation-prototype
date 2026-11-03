@@ -5,6 +5,9 @@ Keys are read inside the program and never printed.
 
     STUDIO_URL          the AGNT5 Studio to use, e.g. https://app.agnt5.com
     STUDIO_PROJECT_ID   the project whose runs are read
+    STUDIO_API_URL      the AGNT5 API behind that Studio, e.g. https://api.agnt5.com
+    STUDIO_API_KEY      an AGNT5 API key that can read the project, or a file named by STUDIO_API_KEY_FILE
+    BROWSER_TIME_ZONE   the time zone Studio's times are shown in (default America/New_York, Steel's)
     STEEL_API_KEY       or a file named by STEEL_KEY_FILE (default ~/.steel-key)
     OPENAI_API_KEY      or a dotenv file that sets it, named by OPENAI_ENV_FILE
 """
@@ -40,6 +43,12 @@ def setting(name: str, default: str | None = None) -> str:
 
 STUDIO_URL = setting("STUDIO_URL").rstrip("/")
 STUDIO_PROJECT_ID = setting("STUDIO_PROJECT_ID")
+STUDIO_API_URL = setting("STUDIO_API_URL").rstrip("/")
+BROWSER_TIME_ZONE = setting("BROWSER_TIME_ZONE", "America/New_York")
+
+
+def studio_api_key() -> str:
+    return os.environ.get("STUDIO_API_KEY") or Path(setting("STUDIO_API_KEY_FILE")).expanduser().read_text().strip()
 
 
 def steel_key() -> str:

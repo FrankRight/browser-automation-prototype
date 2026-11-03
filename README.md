@@ -2,7 +2,7 @@
 
 A plain Python program that uses a website through its screens, in a full, visible browser on [Steel](https://steel.dev). Steel's Input API sends the mouse and keyboard actions, and an OpenAI computer-use model reads the screen and decides them. No browser-automation library is involved.
 
-Its first job is a check on [AGNT5](https://agnt5.com) Studio: read a project's 20 newest finished runs from the Runs page, as plain data, using a saved sign-in.
+Its first job is a check on [AGNT5](https://agnt5.com) Studio: read a project's 20 newest finished runs from the Runs page, as plain data, using a saved sign-in, and have an agent check them against the AGNT5 API.
 
 ## Set up
 
@@ -11,6 +11,8 @@ uv sync
 cat > .env.local <<'EOF'
 STUDIO_URL=https://app.agnt5.com
 STUDIO_PROJECT_ID=<the project to read>
+STUDIO_API_URL=https://api.agnt5.com
+STUDIO_API_KEY_FILE=<a file holding an AGNT5 API key that can read the project>
 OPENAI_ENV_FILE=<a dotenv file that sets OPENAI_API_KEY>
 EOF
 chmod 600 .env.local
@@ -24,7 +26,7 @@ chmod 600 .env.local
 uv run python studio_check.py
 ```
 
-It prints the project's 20 newest finished runs as JSON. When there's no saved sign-in yet, or it has expired, it pauses: it opens Studio's sign-in page in a Steel session, shows you the session's links in the terminal, and waits for you to sign in there and type `done`. After three `done` answers that leave Studio signed out, it stops with `{"status": "login_failed"}`. Other results: `unrecognised` when it can't find the runs table, and `unavailable` when the model or Steel doesn't answer in time.
+It prints a JSON report: how many of the 20 newest finished runs were checked and matched the API, every `mismatch` field by field with both values, runs `not_in_api`, and `misreads`. When the agent finds a disagreement, the program reads Studio again and re-checks those runs; a disagreement the second read doesn't repeat was the first read getting the screen wrong, so it's listed as a misread rather than a mismatch. When there's no saved sign-in yet, or it has expired, it pauses: it opens Studio's sign-in page in a Steel session, shows you the session's links in the terminal, and waits for you to sign in there and type `done`. After three `done` answers that leave Studio signed out, it stops with `{"status": "login_failed"}`. Other results: `unrecognised` when it can't find the runs table, and `unavailable` when the model or Steel doesn't answer in time.
 
 `uv run python sign_out.py` signs the saved profile out of Studio, to try the login pause.
 
@@ -34,7 +36,9 @@ It prints the project's 20 newest finished runs as JSON. When there's no saved s
 |---|---|
 | `steel_session.py` | Opens one Steel session per action and always releases it. Sessions are headful, with no generated fingerprint, CAPTCHA solving, proxies or simulated mouse movement. |
 | `computer_use.py` | The loop between the model and the screen. It stops on a safety check instead of approving it, and keeps screenshots in memory. |
-| `studio_check.py` | The program: reads the runs, and pauses for a person whenever Studio needs a login. |
+| `studio_check.py` | The program: reads the runs, pausing for a person whenever Studio needs a login, then checks them against the API. |
+| `compare.py` | The comparison step: an agent looks each run up with a `get_run_summary` tool and reports disagreements in a fixed JSON shape. It never touches the browser, and it treats what it was shown as data. |
+| `api_runs.py` | The tool's lookup: the project's runs from the AGNT5 API, keyed by enqueue time as Studio shows it. |
 | `read_runs.py` | The read step: opens the Runs page, has the model read 20 finished runs, and returns them as plain data, `needs_login` or `unrecognised`. |
 | `login_window.py` | Opens Studio's sign-in page in a Steel session for a person, and releases it afterwards, which saves the login to the profile. |
 | `sign_out.py` | Test helper: signs the saved profile out of Studio. |

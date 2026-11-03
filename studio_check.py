@@ -1,4 +1,4 @@
-"""The Studio check: read the project's runs, pausing for a person whenever Studio needs a login.
+"""The Studio check: read the project's runs from Studio and check them against the AGNT5 API.
 
     uv run python studio_check.py
 
@@ -6,6 +6,10 @@ Messages for the person go to the terminal (stderr); the result is printed as JS
 When the saved login is missing or expired, the program opens Studio's sign-in page in a
 Steel session, shows its links, and waits for "done". After three "done" answers that
 leave Studio signed out, it stops.
+
+An agent then compares the runs with the API. Runs read from screenshots can be misread,
+so when anything disagrees, the program reads Studio again and re-checks those runs: a
+disagreement the second read doesn't repeat is reported as a misread, not a mismatch.
 """
 import json
 import sys
@@ -14,6 +18,8 @@ import time
 from openai import APIError
 from steel import APIError as SteelAPIError
 
+from api_runs import RunIndex
+from compare import compare, confirm, suspects
 from config import save_profile_id, saved_profile_id
 from login_window import LOGIN_TIMEOUT_MS, close_login_window, is_open, open_login_window
 from read_runs import read_runs
@@ -39,15 +45,16 @@ def wait_for_done(ask) -> None:
         pass
 
 
-def check(ask=ask_terminal) -> dict:
+def read_with_login(ask) -> tuple[dict, str | None]:
+    """Read the runs, pausing for a person to sign in when Studio asks. Returns the result and profile."""
     profile_id = saved_profile_id()
     logins = 0
     while True:
         result = read_runs(profile_id)
         if result.get("status") != "needs_login":
-            return result
+            return result, profile_id
         if logins == MAX_LOGINS:
-            return {"status": "login_failed", "detail": f"Studio was still signed out after {MAX_LOGINS} logins"}
+            return {"status": "login_failed", "detail": f"Studio was still signed out after {MAX_LOGINS} logins"}, profile_id
         window = open_login_window(profile_id)
         if window.profile_id != profile_id:  # the first login creates the profile
             profile_id = window.profile_id
@@ -67,6 +74,35 @@ def check(ask=ask_terminal) -> dict:
         finally:
             if close_login_window(window) == "UNCHANGED":  # releasing normally saves the login
                 tell("Steel didn't save that sign-in session, so the login may not have been kept.")
+
+
+def check(ask=ask_terminal) -> dict:
+    result, profile_id = read_with_login(ask)
+    if result.get("status") != "ok":
+        return result
+    runs = result["runs"]
+    index = RunIndex()
+    first = compare(runs, index)
+    survived, misreads = first, {"mismatches": [], "not_in_api": []}
+    if suspects(first):
+        tell(f"{len(suspects(first))} run(s) disagree with the API; reading Studio again to rule out misreads.")
+        again = read_runs(profile_id)
+        if again.get("status") == "ok":
+            survived, misreads = confirm(first, again["runs"], index)
+        else:
+            tell(f"Couldn't read Studio again ({again.get('status')}), so these stay unconfirmed.")
+    problems = {m["time"] for m in survived["mismatches"]} | {n["time"] for n in survived["not_in_api"]}
+    unchecked = {u["time"] for u in first["unchecked"]}
+    return {
+        "status": "ok",
+        "checked": len(runs) - len(unchecked),
+        "matching": sum(1 for run in runs if run["time"] not in problems | unchecked),
+        "mismatches": survived["mismatches"],
+        "not_in_api": survived["not_in_api"],
+        "misreads": misreads["mismatches"] + misreads["not_in_api"],
+        "unchecked": first["unchecked"],
+        "runs": runs,
+    }
 
 
 if __name__ == "__main__":
