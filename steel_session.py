@@ -9,7 +9,7 @@ import struct
 import time
 from contextlib import contextmanager
 
-from steel import Steel
+from steel import NotFoundError, Steel
 
 from config import SCREEN, steel_key
 
@@ -20,12 +20,27 @@ def client() -> Steel:
     return Steel(steel_api_key=steel_key())
 
 
-def wait_for_profile(steel: Steel, profile_id: str, timeout_s: int = 120) -> str:
-    """Wait until Steel has saved the profile; a new session can't load it before then (409)."""
-    deadline = time.monotonic() + timeout_s
-    while (status := steel.profiles.get(profile_id).status) == "UPLOADING" and time.monotonic() < deadline:
-        time.sleep(2)
-    return status
+def wait_for_profile(steel: Steel, profile_id: str, saved_by: str, settle_s: float = 15, timeout_s: float = 120) -> str:
+    """Wait until Steel has saved the profile from session `saved_by`.
+
+    Right after a release the profile still says READY from its previous save. A session
+    started then loads that older copy, and its own save overwrites the newer one, so a
+    login made in the released session is lost. Steel records which session saved last;
+    a save usually lands about 1.5 s after the release. Steel doesn't save every session,
+    though (one released within a second wasn't), so after settle_s with no save from
+    this session and nothing uploading, it returns "UNCHANGED" instead of waiting on.
+    """
+    started = time.monotonic()
+    while True:
+        profile = steel.profiles.get(profile_id)
+        waited = time.monotonic() - started
+        if profile.status == "FAILED" or (profile.status == "READY" and profile.source_session_id == saved_by):
+            return profile.status
+        if profile.status == "READY" and waited > settle_s:
+            return "UNCHANGED"
+        if waited > timeout_s:
+            raise TimeoutError(f"Steel was still saving the profile after {timeout_s:.0f} s")
+        time.sleep(1)
 
 
 @contextmanager
@@ -51,9 +66,12 @@ def open_session(*, profile_id=None, persist_profile=False, interactive=False, t
     try:
         yield steel, session
     finally:
-        steel.sessions.release(session.id)
+        try:
+            steel.sessions.release(session.id)
+        except NotFoundError:  # already gone: timed out or failed to start
+            pass
         if persist_profile and session.profile_id:
-            wait_for_profile(steel, session.profile_id)
+            wait_for_profile(steel, session.profile_id, saved_by=session.id)
 
 
 def screenshot(steel: Steel, session_id: str) -> bytes:
@@ -66,7 +84,10 @@ def wait_for_window(steel: Steel, session_id: str, timeout_s: float = 15) -> Non
     different size, and keys typed into it are lost (a half-typed address can't be reached)."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        width, height = struct.unpack(">II", screenshot(steel, session_id)[16:24])  # PNG header
+        try:
+            width, height = struct.unpack(">II", screenshot(steel, session_id)[16:24])  # PNG header
+        except NotFoundError:  # a brand-new session can answer 404 for a moment while it starts
+            width = height = None
         if (width, height) == (SCREEN["width"], SCREEN["height"]):
             return
         time.sleep(0.5)

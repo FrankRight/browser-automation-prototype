@@ -21,13 +21,12 @@ chmod 600 .env.local
 ## Run it
 
 ```bash
-uv run python seed_profile.py start    # once: opens Studio's sign-in page in a Steel session
-#   sign in through the link in state/login-link.txt, then:
-uv run python seed_profile.py finish   # saves the sign-in to a Steel profile
-uv run python read_runs.py             # prints the 20 newest finished runs as JSON
+uv run python studio_check.py
 ```
 
-`read_runs.py` prints `{"status": "needs_login"}` when the saved sign-in has expired (seed it again), or `{"status": "unrecognised", ...}` when it can't find the runs table.
+It prints the project's 20 newest finished runs as JSON. When there's no saved sign-in yet, or it has expired, it pauses: it opens Studio's sign-in page in a Steel session, shows you the session's links in the terminal, and waits for you to sign in there and type `done`. After three `done` answers that leave Studio signed out, it stops with `{"status": "login_failed"}`. Other results: `unrecognised` when it can't find the runs table, and `unavailable` when the model or Steel doesn't answer in time.
+
+`uv run python sign_out.py` signs the saved profile out of Studio, to try the login pause.
 
 ## How it works
 
@@ -35,8 +34,10 @@ uv run python read_runs.py             # prints the 20 newest finished runs as J
 |---|---|
 | `steel_session.py` | Opens one Steel session per action and always releases it. Sessions are headful, with no generated fingerprint, CAPTCHA solving, proxies or simulated mouse movement. |
 | `computer_use.py` | The loop between the model and the screen. It stops on a safety check instead of approving it, and keeps screenshots in memory. |
-| `read_runs.py` | Opens the Runs page, has the model read 20 finished runs, and returns them as plain data, `needs_login` or `unrecognised`. |
-| `seed_profile.py` | Signs the Steel profile in to Studio by hand, through the session's live view. |
+| `studio_check.py` | The program: reads the runs, and pauses for a person whenever Studio needs a login. |
+| `read_runs.py` | The read step: opens the Runs page, has the model read 20 finished runs, and returns them as plain data, `needs_login` or `unrecognised`. |
+| `login_window.py` | Opens Studio's sign-in page in a Steel session for a person, and releases it afterwards, which saves the login to the profile. |
+| `sign_out.py` | Test helper: signs the saved profile out of Studio. |
 | `config.py` | Settings, keys, screen size, and where the profile ID is kept (`state/`, git-ignored, mode 600). |
 
 ## What we learned
@@ -45,4 +46,4 @@ uv run python read_runs.py             # prints the 20 newest finished runs as J
 - **Wait for the browser window before typing.** Keys sent while the desktop is still starting are lost, and a half-typed address can't be reached.
 - **Studio's runs table doesn't show run IDs.** Its TIME column is when the run was enqueued, in the browser's time zone (New York on Steel), and DURATION is the API's `total_time_ms`.
 - **Steel generates a browser fingerprint unless told not to.** Sessions here set `skip_fingerprint_injection`. Steel also records every session, and SDK 0.19 has no switch to turn that off.
-- **The live view link needs care.** Anyone holding a session's debug URL can control it, so the program writes it to a mode-600 file instead of printing it.
+- **The live view link needs care.** Anyone holding a session's debug URL can control it, so the program shows it only in the terminal, next to Steel's own viewer link, which needs a Steel sign-in.

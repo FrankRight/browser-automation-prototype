@@ -9,6 +9,7 @@ import json
 import sys
 
 from openai import APIError
+from steel import APIError as SteelAPIError
 
 from computer_use import work_screen
 from config import STUDIO_PROJECT_ID, STUDIO_URL, saved_profile_id
@@ -32,7 +33,7 @@ A finished run is completed, failed or cancelled. Keep the table's order, newest
 
 Answer with JSON only, without a code fence:
 {"status": "ok", "runs": [ ... ]}
-If the page shows a sign-in form instead: {"status": "needs_login"}
+If the page shows a sign-in form, or a security check such as a CAPTCHA, a one-time code or a "verify it's you" page, instead: {"status": "needs_login"}. Don't try to get past it.
 If you can't find the runs table: {"status": "unrecognised", "missing": "<what you couldn't find>"}"""
 
 
@@ -54,7 +55,7 @@ def read_runs(profile_id: str | None) -> dict:
 if __name__ == "__main__":
     try:
         result = read_runs(saved_profile_id())
-    except (TimeoutError, APIError) as error:  # the session is already released; a later run can retry
+    except (TimeoutError, APIError, SteelAPIError) as error:  # the session is already released; a later run can retry
         result = {"status": "unavailable", "detail": f"{type(error).__name__}: {error}"[:300]}
     json.dump(result, sys.stdout, indent=1)
     print()
