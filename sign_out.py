@@ -10,6 +10,6 @@ if __name__ == "__main__":
     if not profile_id:
         raise SystemExit("there's no saved profile to sign out")
     with open_session(profile_id=profile_id, persist_profile=True) as (steel, session):
-        go_to(steel, session.id, f"{STUDIO_URL}/logout")
+        go_to(steel, session.id, f"{STUDIO_URL}/logout", page="Studio's sign-out page")
         steel.sessions.computer(session.id, action="wait", duration=3)
     print("signed the saved profile out of Studio")

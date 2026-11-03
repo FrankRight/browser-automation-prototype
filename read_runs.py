@@ -13,6 +13,7 @@ from steel import APIError as SteelAPIError
 
 from computer_use import work_screen
 from config import STUDIO_PROJECT_ID, STUDIO_URL, saved_profile_id
+from progress import progress
 from steel_session import go_to, open_session
 
 FIELDS = ("time", "component", "source", "status", "duration", "output")
@@ -37,10 +38,18 @@ If the page shows a sign-in form, or a security check such as a CAPTCHA, a one-t
 If you can't find the runs table: {"status": "unrecognised", "missing": "<what you couldn't find>"}"""
 
 
+def _runs_so_far(answer: str) -> str:
+    """While the model writes its answer: how many runs it has listed so far."""
+    listed = answer.count('"time"')
+    return f"writing out the runs, {listed} of 20"
+
+
+@progress.step("Reading Studio's runs")
 def read_runs(profile_id: str | None) -> dict:
     with open_session(profile_id=profile_id, persist_profile=True) as (steel, session):
-        go_to(steel, session.id, f"{STUDIO_URL}/projects/{STUDIO_PROJECT_ID}/runs?time_range=all")
-        answer = work_screen(steel, session.id, GOAL)
+        go_to(steel, session.id, f"{STUDIO_URL}/projects/{STUDIO_PROJECT_ID}/runs?time_range=all", page="the Runs page")
+        with progress.step("Model reading the runs table"):
+            answer = work_screen(steel, session.id, GOAL, answer_progress=_runs_so_far)
     result = json.loads(answer.strip().removeprefix("```json").removesuffix("```").strip())
     if result.get("status") == "ok":
         runs = result.get("runs") or []

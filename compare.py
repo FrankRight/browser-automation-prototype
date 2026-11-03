@@ -10,6 +10,7 @@ from openai import OpenAI
 
 from api_runs import RunIndex
 from config import openai_key
+from progress import progress
 
 MODEL = "gpt-6.1-sol"
 FIELDS = ("time", "component", "status", "duration")  # the API's run list has no output to compare
@@ -63,8 +64,9 @@ def compare(runs: list[dict], index: RunIndex, *, max_turns: int = 10) -> dict:
     request = dict(model=MODEL, instructions=INSTRUCTIONS, tools=[TOOL], text={"format": REPORT})
     shown = [{field: run[field] for field in FIELDS} for run in runs]
     looked_up: set[str] = set()
+    progress.update("the agent is thinking, turn 1")
     response = ai.responses.create(**request, input="Runs as Studio showed them:\n" + json.dumps(shown, indent=1))
-    for _ in range(max_turns):
+    for turn in range(2, max_turns + 2):
         calls = [item for item in response.output if item.type == "function_call"]
         if not calls:
             report = json.loads(response.output_text)
@@ -77,6 +79,10 @@ def compare(runs: list[dict], index: RunIndex, *, max_turns: int = 10) -> dict:
             time = json.loads(call.arguments)["time"]
             looked_up.add(time.strip())
             outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(index.at(time))})
+        covered = sum(1 for run in runs if run["time"].strip() in looked_up)
+        progress.event(f"the agent called get_run_summary {len(calls)} time{'s' * (len(calls) != 1)} "
+                       f"({covered} of {len(runs)} runs covered)")
+        progress.update(f"the agent is thinking, turn {turn}")
         response = ai.responses.create(**request, previous_response_id=response.id, input=outputs)
     raise TimeoutError(f"the comparison agent didn't finish within {max_turns} turns")
 

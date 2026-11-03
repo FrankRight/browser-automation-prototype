@@ -30,6 +30,8 @@ It prints a JSON report: how many of the 20 newest finished runs were checked an
 
 When every run matches, it asks you to approve creating a service key with an exact, one-off name (`studio-check-<date>-<4 hex>`). Type `yes` to create it; anything else creates nothing. The write looks before it acts: if Studio already lists a key with that name, it doesn't create another. The approved name is kept in `state/` until the write finishes, so a run that crashes resumes it without asking again, and a run releases any Steel session a crashed run left holding the profile. If it can't tell whether Studio created the key, it asks you to check Studio and type `created` or `not created`. The key is revoked at the end; it only exists to test the write.
 
+While it runs, the terminal shows what it's doing: each step with a spinner and the time it has taken, the model's clicks, typing and scrolling as they happen, and a link to watch each browser session on Steel. It ends with a table of where the time went. Typed text is shown only when it's the approved key name, and nothing the model writes is shown, because it could repeat something private from the screen. Without a terminal (in a pipe or a log), the same comes as timestamped lines. `--quiet` leaves the progress out.
+
 `uv run python sign_out.py` signs the saved profile out of Studio, to try the login pause.
 
 ## Run the demo
@@ -38,7 +40,7 @@ When every run matches, it asks you to approve creating a service key with an ex
 2. **The login pause.** `uv run python sign_out.py`, then `uv run python studio_check.py`. Open the Steel dashboard link it prints, sign in to Studio there, and type `done`. The run carries on without a restart. (`--show-live-view-link` also prints the session's live view link, which works for anyone who has it.)
 3. **A crash, and recovery.** `uv run python studio_check.py --crash-after-create`, then `yes`: it dies right after Studio creates the key, as `kill -9` would. Run `uv run python studio_check.py` again: it releases the session the crash left, resumes the approved write without asking again, finds the key instead of creating a second one, and revokes it.
 
-To watch the browser while it works, open the live session on Steel's dashboard. Don't show it on a shared screen while the key's dialog is open: Studio shows the new key's value there once.
+To watch the browser while it works, open the "Watch it on Steel" link the terminal prints when each session starts (it needs a Steel sign-in). Don't show it on a shared screen while the key's dialog is open: Studio shows the new key's value there once.
 
 ## How it works
 
@@ -54,6 +56,7 @@ To watch the browser while it works, open the live session on Steel's dashboard.
 | `read_runs.py` | The read step: opens the Runs page, has the model read 20 finished runs, and returns them as plain data, `needs_login` or `unrecognised`. |
 | `login_window.py` | Opens Studio's sign-in page in a Steel session for a person, and releases it afterwards, which saves the login to the profile. |
 | `sign_out.py` | Test helper: signs the saved profile out of Studio. |
+| `progress.py` | The live progress on the terminal: each step with a spinner and its time, the model's actions, and the timing table at the end. It writes only to stderr, so stdout stays the JSON result. |
 | `config.py` | Settings, keys, screen size, and where the profile ID is kept (`state/`, git-ignored, mode 600). |
 
 ## What we learned

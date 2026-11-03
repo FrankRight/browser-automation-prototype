@@ -7,7 +7,8 @@ writes the live view link anywhere: anyone holding it can control the session.
 from dataclasses import dataclass
 
 from config import SCREEN, STUDIO_URL
-from steel_session import NO_DISGUISE, client, go_to, wait_for_profile
+from progress import progress
+from steel_session import NO_DISGUISE, client, go_to, saved_note, wait_for_profile
 
 LOGIN_TIMEOUT_MS = 15 * 60 * 1000  # the free plan's longest session
 
@@ -23,12 +24,13 @@ class LoginWindow:
 def open_login_window(profile_id: str | None, *, timeout_ms: int = LOGIN_TIMEOUT_MS) -> LoginWindow:
     steel = client()
     reuse = {"profile_id": profile_id} if profile_id else {}
-    session = steel.sessions.create(
-        headless=False, dimensions=SCREEN, solve_captcha=False, stealth_config=NO_DISGUISE,
-        debug_config={"interactive": True}, api_timeout=timeout_ms, persist_profile=True, **reuse,
-    )
+    with progress.step("Starting a browser on Steel"):
+        session = steel.sessions.create(
+            headless=False, dimensions=SCREEN, solve_captcha=False, stealth_config=NO_DISGUISE,
+            debug_config={"interactive": True}, api_timeout=timeout_ms, persist_profile=True, **reuse,
+        )
     try:
-        go_to(steel, session.id, f"{STUDIO_URL}/login")
+        go_to(steel, session.id, f"{STUDIO_URL}/login", page="Studio's sign-in page")
     except Exception:
         steel.sessions.release(session.id)
         raise
@@ -44,6 +46,10 @@ def is_open(window: LoginWindow) -> bool:
 def close_login_window(window: LoginWindow) -> str:
     """Release the session if it's still running, then wait for Steel to save the profile."""
     steel = client()
-    if steel.sessions.retrieve(window.session_id).status == "live":
-        steel.sessions.release(window.session_id)
-    return wait_for_profile(steel, window.profile_id, saved_by=window.session_id)
+    with progress.step("Closing the browser"):
+        if steel.sessions.retrieve(window.session_id).status == "live":
+            steel.sessions.release(window.session_id)
+        progress.update("waiting for Steel to save the sign-in to the profile")
+        saved = wait_for_profile(steel, window.profile_id, saved_by=window.session_id)
+        progress.note(saved_note(saved))
+    return saved

@@ -17,6 +17,7 @@ import signal
 
 from computer_use import work_screen
 from config import STUDIO_PROJECT_ID, STUDIO_URL
+from progress import progress
 from steel_session import go_to, open_session
 
 LOOK = """You are looking at the Service keys page of AGNT5 Studio's project settings, in a browser that's already open on it.
@@ -56,27 +57,36 @@ def _look(steel, session_id, name: str) -> dict | None:
     return _answer(work_screen(steel, session_id, LOOK.format(name=name)), {"listed", "not_listed", "needs_login", "unrecognised"})
 
 
+@progress.step("Creating the service key in Studio")
 def create_service_key(profile_id: str, name: str) -> dict:
+    keys_page = f"{STUDIO_URL}/projects/{STUDIO_PROJECT_ID}/settings/service-keys"
     with open_session(profile_id=profile_id, persist_profile=True) as (steel, session):
-        go_to(steel, session.id, f"{STUDIO_URL}/projects/{STUDIO_PROJECT_ID}/settings/service-keys")
-        before = _look(steel, session.id, name)
+        go_to(steel, session.id, keys_page, page="the Service keys page")
+        with progress.step(f'Model looking for "{name}"'):
+            before = _look(steel, session.id, name)
         if before is None:
             return {"status": "unrecognised", "missing": "a readable answer about the service keys list"}
         if before["status"] == "listed":
+            progress.event(f'Studio already lists "{name}", so it isn\'t created again')
             return {"status": "exists", "name": name}
         if before["status"] != "not_listed":
             return before
         try:
-            made = _answer(work_screen(steel, session.id, CREATE.format(name=name)), {"submitted", "not_submitted", "needs_login"})
+            with progress.step("Model creating the key"):
+                made = _answer(work_screen(steel, session.id, CREATE.format(name=name), show_typed={name}),
+                               {"submitted", "not_submitted", "needs_login"})
         except Exception as error:  # it may have clicked create before failing
             return {"status": "unclear", "name": name, "detail": f"stopped while creating: {type(error).__name__}"}
         if CRASH_AFTER_CREATE and made and made["status"] == "submitted":
+            progress.say("\nCrashing on purpose (--crash-after-create): Studio has just created the key, "
+                         "and the program dies now, as kill -9 would.")
             os.kill(os.getpid(), signal.SIGKILL)  # demo: die like `kill -9`, right after Studio made the key
         if made and made["status"] in ("not_submitted", "needs_login"):
             return {"status": made["status"], **({"why": str(made.get("why", ""))[:200]} if made.get("why") else {})}
         try:
-            go_to(steel, session.id, f"{STUDIO_URL}/projects/{STUDIO_PROJECT_ID}/settings/service-keys")
-            after = _look(steel, session.id, name)
+            go_to(steel, session.id, keys_page, page="the Service keys page again")
+            with progress.step(f'Model checking "{name}" is listed'):
+                after = _look(steel, session.id, name)
         except Exception as error:
             return {"status": "unclear", "name": name, "detail": f"couldn't read the list back: {type(error).__name__}"}
         if after and after["status"] == "listed":

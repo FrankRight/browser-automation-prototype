@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from steel import NotFoundError, Steel
 
 from config import SCREEN, steel_key
+from progress import progress
 
 NO_DISGUISE = {"skip_fingerprint_injection": True, "humanize_interactions": False, "auto_captcha_solving": False}
 
@@ -43,6 +44,11 @@ def wait_for_profile(steel: Steel, profile_id: str, saved_by: str, settle_s: flo
         time.sleep(1)
 
 
+def saved_note(status: str) -> str:
+    """wait_for_profile's answer, in words for the terminal."""
+    return {"READY": "profile saved", "UNCHANGED": "Steel didn't save the profile"}.get(status, f"profile {status.lower()}")
+
+
 def release_stale_sessions(profile_id: str | None) -> int:
     """Release live sessions a crashed run left holding the profile. Steel would keep them until
     their timeout, and a second session on the same profile can save over the first one's work."""
@@ -53,10 +59,12 @@ def release_stale_sessions(profile_id: str | None) -> int:
     sessions = getattr(page, "sessions", None) or getattr(page, "data", None) or list(page)
     stale = [s for s in sessions if s.status == "live" and s.profile_id == profile_id]
     for session in stale:
+        progress.update("closing a session a crashed run left")
         try:
             steel.sessions.release(session.id)
         except NotFoundError:
             continue
+        progress.update("waiting for Steel to save the profile")
         wait_for_profile(steel, profile_id, saved_by=session.id)
     return len(stale)
 
@@ -80,16 +88,20 @@ def open_session(*, profile_id=None, persist_profile=False, interactive=False, t
     )
     if profile_id:
         options["profile_id"] = profile_id
-    session = steel.sessions.create(**options)
+    with progress.step("Starting a browser on Steel"):
+        session = steel.sessions.create(**options)
     try:
+        progress.event(f"Watch it on Steel: {session.session_viewer_url}")  # needs a Steel sign-in
         yield steel, session
     finally:
-        try:
-            steel.sessions.release(session.id)
-        except NotFoundError:  # already gone: timed out or failed to start
-            pass
-        if persist_profile and session.profile_id:
-            wait_for_profile(steel, session.profile_id, saved_by=session.id)
+        with progress.step("Closing the browser"):
+            try:
+                steel.sessions.release(session.id)
+            except NotFoundError:  # already gone: timed out or failed to start
+                pass
+            if persist_profile and session.profile_id:
+                progress.update("waiting for Steel to save the profile")
+                progress.note(saved_note(wait_for_profile(steel, session.profile_id, saved_by=session.id)))
 
 
 def screenshot(steel: Steel, session_id: str) -> bytes:
@@ -112,11 +124,16 @@ def wait_for_window(steel: Steel, session_id: str, timeout_s: float = 15) -> Non
     raise TimeoutError("the browser window didn't appear")
 
 
-def go_to(steel: Steel, session_id: str, url: str) -> bytes:
-    """Open a URL the way a person would: focus the address bar, type, press Enter."""
-    wait_for_window(steel, session_id)
-    steel.sessions.computer(session_id, action="press_key", keys=["Control", "l"])
-    steel.sessions.computer(session_id, action="type_text", text=url)
-    steel.sessions.computer(session_id, action="press_key", keys=["Enter"])
-    steel.sessions.computer(session_id, action="wait", duration=3)
-    return screenshot(steel, session_id)
+def go_to(steel: Steel, session_id: str, url: str, *, page: str | None = None) -> bytes:
+    """Open a URL the way a person would: focus the address bar, type, press Enter.
+    `page` names it on the terminal, as in "Opening the Runs page"."""
+    with progress.step(f"Opening {page or url}"):
+        progress.update("waiting for the browser window")
+        wait_for_window(steel, session_id)
+        progress.update("typing the address")
+        steel.sessions.computer(session_id, action="press_key", keys=["Control", "l"])
+        steel.sessions.computer(session_id, action="type_text", text=url)
+        steel.sessions.computer(session_id, action="press_key", keys=["Enter"])
+        progress.update("waiting for the page to load")
+        steel.sessions.computer(session_id, action="wait", duration=3)
+        return screenshot(steel, session_id)
