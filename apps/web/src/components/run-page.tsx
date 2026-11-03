@@ -86,6 +86,7 @@ export function RunPage({ runId, onNewRun }: { runId: string; onNewRun: () => vo
             {selected ? (
               <StepDetails
                 key={selected.key}
+                runId={runId}
                 step={selected}
                 waiting={view.waiting?.key === selected.key && !view.takeover}
                 now={now}

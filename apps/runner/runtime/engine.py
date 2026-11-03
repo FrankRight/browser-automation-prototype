@@ -89,6 +89,7 @@ class Engine:
 
     def start(self, name: str, inputs: dict) -> dict:
         spec = WORKFLOWS[name]
+        inputs = {**{field: make() for field, make in spec["generated_inputs"].items() if field not in inputs}, **inputs}
         run_id = f"run_{secrets.token_hex(6)}"
         (self.dir / run_id).mkdir(parents=True)
         hidden = {field: inputs[field] for field in spec["secret_inputs"] if field in inputs}
@@ -121,6 +122,8 @@ class Engine:
         self.emit(run_id, "workflow.step.completed", step=key, data={"name": key, "output": response})
         if pause["takeover"]:
             self.emit(run_id, "browser.takeover.ended", step=key, data={"step_key": key})
+        if pause.get("handover"):
+            self.emit(run_id, "secret.handover.ended", step=key, data={"step_key": key})
         run["pause"] = None
         self._save(run)
         self._schedule(run_id)
@@ -130,6 +133,13 @@ class Engine:
         """The browser session a person should use now, while the run waits on them in it."""
         pause = self.runs.get(run_id, {}).get("pause")
         return pause.get("session_id") if pause and pause.get("takeover") else None
+
+    def handover_value(self, run_id: str) -> tuple[str, str] | None:
+        """The secret a person should copy now, as (field, value), while the run waits on them to."""
+        pause = self.runs.get(run_id, {}).get("pause")
+        field = pause.get("handover") if pause else None
+        value = self._secret_inputs(run_id).get(field) if field else None
+        return (field, value) if value else None
 
     def recover(self) -> None:
         """Load every run, then start again the ones that were going when the runner stopped."""

@@ -9,7 +9,7 @@ export interface ProgressItem extends ProgressUpdate {
 
 export interface StepView {
   key: string;
-  kind: "step" | "pause" | "takeover";
+  kind: "step" | "pause" | "takeover" | "handover";
   status: StepStatus;
   startedAt?: string;
   durationMs?: number;
@@ -37,6 +37,7 @@ const LABELS: [RegExp, string][] = [
   [/^look_\d+$/, "Look for the secret in Studio"],
   [/^open_login_window_\d+$/, "Open a browser to sign in"],
   [/^take_over_browser_\d+$/, "Sign in to Studio"],
+  [/^hand_over_secret_\d+$/, "Copy your new secret"],
   [/^close_login_window_\d+$/, "Close the browser and save the login"],
   [/^create$/, "Add the secret in Studio"],
   [/^read_back$/, "Check that Studio lists the secret"],
@@ -104,9 +105,12 @@ export function buildRunView(events: RunEvent[]): RunView {
       case "browser.takeover.ended":
         openTakeovers.delete(key);
         break;
+      case "secret.handover.started":
+        step(key).kind = "handover";
+        break;
       case "workflow.step.started": {
         const s = step(key);
-        if (data.type === "user_input" && s.kind !== "takeover") s.kind = "pause";
+        if (data.type === "user_input" && s.kind === "step") s.kind = "pause";
         s.status = "running";
         s.startedAt = event.time;
         s.error = undefined;

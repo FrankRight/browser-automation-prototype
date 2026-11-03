@@ -161,6 +161,17 @@ async def browser(run_id: str):
     return JSONResponse({"url": f"{session.debug_url}?interactive=true"}, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/v1/runs/{run_id}/secret", dependencies=[Depends(signed_in)])
+async def secret(run_id: str):
+    """The secret a run hands over, such as a value it generated, and only while it waits for the person to copy it."""
+    find(run_id)
+    handover = engine.handover_value(run_id)
+    if not handover:
+        raise HTTPException(404, "This run isn't handing over a secret.")
+    field, value = handover
+    return JSONResponse({"field": field, "value": value}, headers={"Cache-Control": "no-store"})
+
+
 if WEB_DIST.exists():
     app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
 

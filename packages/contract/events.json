@@ -1,5 +1,5 @@
 {
-  "description": "Every event type the runner records. Names follow AGNT5's run events; browser.takeover.* are the two this prototype adds.",
+  "description": "Every event type the runner records. Names follow AGNT5's run events; browser.takeover.* and secret.handover.* are the prototype's additions.",
   "types": [
     "run.started",
     "run.paused",
@@ -13,6 +13,8 @@
     "approval.requested",
     "progress.update",
     "browser.takeover.started",
-    "browser.takeover.ended"
+    "browser.takeover.ended",
+    "secret.handover.started",
+    "secret.handover.ended"
   ]
 }

@@ -264,3 +264,44 @@ def test_progress_inside_a_step_becomes_events_on_that_step(tmp_path):
         assert {u["step"] for u in updates} == {"look_1"}
         assert updates[1]["data"]["message"] == "click at (10, 20)"
     run(main())
+
+
+def test_a_generated_secret_is_handed_over_only_during_its_pause_then_deleted(tmp_path):
+    @workflow("generate_and_hand_over", secret_inputs=("value",), generated_inputs={"value": lambda: "generated-value-123"})
+    async def flow(ctx, value):
+        typed = await ctx.step("type", lambda: TYPING_SECRETS.get().get("{{value}}") == "generated-value-123")
+        await ctx.hand_over_secret("value", "Copy it now")
+        return {"typed_the_generated_value": typed}
+
+    async def main():
+        engine = new_engine(tmp_path)
+        run_id = engine.start("generate_and_hand_over", {})["id"]
+        assert engine.handover_value(run_id) is None  # not before its pause
+        await settle(engine)
+        run = engine.runs[run_id]
+        assert run["status"] == "awaiting_user_input" and run["pause"]["handover"] == "value"
+        assert run["input"]["value"] == "{{value}}"
+        assert engine.handover_value(run_id) == ("value", "generated-value-123")
+        engine.resume(run_id, "approved")
+        await settle(engine)
+        assert engine.runs[run_id]["output"] == {"typed_the_generated_value": True}
+        assert engine.handover_value(run_id) is None
+        assert not (tmp_path / "runs" / run_id / "secret-inputs.json").exists()
+        for path in (tmp_path / "runs" / run_id).iterdir():
+            assert "generated-value-123" not in path.read_text()
+        assert {"secret.handover.started", "secret.handover.ended"} <= set(types(engine, run_id))
+    run(main())
+
+
+def test_a_given_value_wins_over_a_generated_one(tmp_path):
+    @workflow("given", secret_inputs=("value",), generated_inputs={"value": lambda: "generated-value-123"})
+    async def flow(ctx, value):
+        return await ctx.step("type", lambda: TYPING_SECRETS.get().get("{{value}}"))
+
+    async def main():
+        engine = new_engine(tmp_path)
+        run_id = engine.start("given", {"value": "given-value-456"})["id"]
+        await settle(engine)
+        assert engine.runs[run_id]["status"] == "failed"  # the guard refuses a step result holding the value
+        assert "given-value-456" not in (tmp_path / "runs" / run_id / "events.jsonl").read_text()
+    run(main())

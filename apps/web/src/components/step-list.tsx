@@ -69,8 +69,13 @@ export function StepList({
   );
 }
 
+const WAITING: Partial<Record<StepView["kind"], string>> = {
+  takeover: "Waiting for you in the browser",
+  handover: "Waiting for you to copy it",
+};
+
 function subtitle(step: StepView, now: number): string {
-  if (step.status === "waiting") return step.kind === "takeover" ? "Waiting for you in the browser" : "Waiting for you";
+  if (step.status === "waiting") return WAITING[step.kind] ?? "Waiting for you";
   if (step.status === "failed") return "Failed";
   if (step.status === "running") return step.startedAt ? `Running · ${duration(now - Date.parse(step.startedAt))}` : "Running";
   if (step.answer) return answerText(step.answer, step.kind);
@@ -79,5 +84,6 @@ function subtitle(step: StepView, now: number): string {
 
 export function answerText(answer: string, kind: StepView["kind"]): string {
   if (kind === "takeover") return answer === "approved" ? "Signed in" : "Cancelled";
+  if (kind === "handover") return "Copied";
   return { approved: "Approved", rejected: "Not approved" }[answer] ?? `Answered: ${answer.replace(/_/g, " ")}`;
 }

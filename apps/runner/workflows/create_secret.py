@@ -1,15 +1,17 @@
 """create_secret: add a project secret in Studio through its UI, the way a person would.
 
 If Studio is signed out, a person signs in through a live browser on the run page. The run
-then carries on by itself and pauses for a person to approve the write. The value is a
-secret input: this code only ever sees its placeholder, and the browser types the real
-value in its place.
+then carries on by itself and pauses for a person to approve the write. The value is
+generated for the run and is a secret input: this code only ever sees its placeholder, and
+the browser types the real value in its place. Once Studio lists the secret, the run pauses
+one last time while the person copies the value, the only place it's ever shown.
 
 Workflow code decides every pause, and each step closes its browser and returns a status,
 so a crash costs one step: finished steps replay from the journal, and the write looks
 before it acts.
 """
 import re
+import secrets
 
 from config import save_profile_id, saved_profile_id
 from login_window import LoginWindow, close_login_window, open_login_window
@@ -20,15 +22,20 @@ MAX_LOGINS = 3
 NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+def new_value() -> str:
+    """A strong value for a new secret: 43 URL-safe characters, 256 bits."""
+    return secrets.token_urlsafe(32)
+
+
 def check_input(inputs: dict) -> str | None:
-    """What's wrong with a run's input, in a sentence, or None."""
+    """What's wrong with a run's input, in a sentence, or None. The value is generated unless given."""
     if not NAME.match(str(inputs.get("name", ""))):
         return "name must be UPPER_SNAKE_CASE, like MY_API_KEY"
     environments = inputs.get("environments")
     if not (isinstance(environments, list) and environments and all(isinstance(e, str) and e for e in environments)):
         return "environments must list at least one environment, such as All Environments"
-    if not isinstance(inputs.get("value"), str) or not inputs["value"]:
-        return "value must not be empty"
+    if "value" in inputs and (not isinstance(inputs["value"], str) or not inputs["value"]):
+        return "value must not be empty; leave it out to have one generated"
     return None
 
 
@@ -45,7 +52,7 @@ def close_login(session_id: str, profile_id: str) -> dict:
     return {"saved": close_login_window(LoginWindow(session_id, profile_id, "", ""))}
 
 
-@workflow("create_secret", secret_inputs=("value",))
+@workflow("create_secret", secret_inputs=("value",), generated_inputs={"value": new_value})
 async def create_secret(ctx, name: str, environments: list[str], value: str) -> dict:
     profile = await ctx.step("profile", saved_profile_id)
     for attempt in range(1, MAX_LOGINS + 2):
@@ -78,9 +85,12 @@ async def create_secret(ctx, name: str, environments: list[str], value: str) -> 
     if made["status"] in ("not_submitted", "needs_login", "unrecognised"):
         return {"name": name, "status": made["status"], **({"why": made["why"]} if made.get("why") else {})}
     back = await ctx.step("read_back", look_for_secret, profile, name)
-    if back["status"] == "listed":
-        return {"name": name, "environments": environments, "status": "created"}
-    checked = await ctx.wait_for_user(
-        f"Studio may or may not have created **{name}**. Check its Secrets page: is it there?", input_type="select",
-        options=[{"id": "created", "label": "It's there"}, {"id": "not_created", "label": "It isn't"}])
-    return {"name": name, "environments": environments, "status": "created" if checked == "created" else "not_created"}
+    if back["status"] != "listed":
+        checked = await ctx.wait_for_user(
+            f"Studio may or may not have created **{name}**. Check its Secrets page: is it there?", input_type="select",
+            options=[{"id": "created", "label": "It's there"}, {"id": "not_created", "label": "It isn't"}])
+        if checked != "created":
+            return {"name": name, "environments": environments, "status": "not_created"}
+    await ctx.hand_over_secret("value", f"Copy the value of **{name}** now. This is the only place it's shown, and it's "
+                                        "deleted from this machine once you confirm.")
+    return {"name": name, "environments": environments, "status": "created"}

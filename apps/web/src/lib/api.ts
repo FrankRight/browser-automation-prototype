@@ -35,6 +35,8 @@ export const api = {
     call<Run>("/v1/runs", { method: "POST", body: JSON.stringify({ workflow, input }) }),
   resume: (id: string, userResponse: string) =>
     call<Run>(`/v1/workflows/resume/${id}`, { method: "POST", body: JSON.stringify({ user_response: userResponse }) }),
+  /** A secret the run hands over, asked for only while it waits for the person to copy it. Kept in memory only. */
+  secret: (id: string) => call<{ field: string; value: string }>(`/v1/runs/${id}/secret`, { cache: "no-store" }),
   /** The live view link, asked for only while the browser panel is open. Callers keep it in memory only. */
   browser: (id: string) => call<{ url: string }>(`/v1/runs/${id}/browser`, { cache: "no-store" }),
 };

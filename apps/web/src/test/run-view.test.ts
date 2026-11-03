@@ -41,6 +41,19 @@ describe("buildRunView", () => {
     expect(stepLabel(view.waiting!)).toBe("Your approval");
   });
 
+  it("names the copy step, which waits for the person like any pause", () => {
+    const view = buildRunView([
+      ev("run.started"),
+      ev("secret.handover.started", "hand_over_secret_1", { step_key: "hand_over_secret_1", field: "value" }),
+      ev("workflow.step.started", "hand_over_secret_1", { type: "user_input" }),
+      ev("approval.requested", "hand_over_secret_1", { step_key: "hand_over_secret_1", question: "Copy it", input_type: "approval", options: [] }),
+      ev("run.paused", "hand_over_secret_1"),
+    ]);
+    expect(view.waiting?.kind).toBe("handover");
+    expect(view.takeover).toBe(false);
+    expect(stepLabel(view.waiting!)).toBe("Copy your new secret");
+  });
+
   it("shows a failed run and its failed step", () => {
     const view = buildRunView([
       ev("run.started"),

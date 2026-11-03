@@ -4,16 +4,19 @@ import { actionText, groupProgress, type Part } from "../lib/progress";
 import { stepLabel, type StepView } from "../lib/run-view";
 import { clockTime, cn, duration } from "../lib/utils";
 import { ApprovalCard } from "./approval-card";
+import { SecretHandover } from "./secret-handover";
 import { answerText } from "./step-list";
 import { ActionIcon, Question, StepIcon } from "./ui";
 
 /** One step: what it's doing or did, the model's turns inside it, and the person's part when it waits on them. */
 export function StepDetails({
+  runId,
   step,
   waiting,
   now,
   onAnswer,
 }: {
+  runId: string;
   step: StepView;
   /** True while this step waits for an answer on this page (not in the browser window). */
   waiting: boolean;
@@ -47,7 +50,10 @@ export function StepDetails({
         )}
       </header>
 
-      {waiting && step.request && <ApprovalCard request={step.request} onAnswer={onAnswer} />}
+      {waiting && step.request && step.kind === "handover" && (
+        <SecretHandover runId={runId} request={step.request} onAnswer={onAnswer} />
+      )}
+      {waiting && step.request && step.kind !== "handover" && <ApprovalCard request={step.request} onAnswer={onAnswer} />}
       {step.kind === "takeover" && step.status === "waiting" && (
         <p className="flex items-center gap-2 bg-card px-4 py-3 text-muted-foreground">
           <Info className="size-4 shrink-0" aria-hidden="true" /> The browser is open on the right. The run carries on when you

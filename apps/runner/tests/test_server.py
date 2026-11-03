@@ -23,6 +23,11 @@ def client(tmp_path, monkeypatch):
     async def sign_in_first(ctx):
         return {"answer": await ctx.take_over_browser("session-42", "Sign in, then continue")}
 
+    @workflow("hand_it_over", secret_inputs=("value",), generated_inputs={"value": lambda: "generated-value-789"})
+    async def hand_it_over(ctx, value):
+        await ctx.hand_over_secret("value", "Copy it now")
+        return "created"
+
     monkeypatch.setattr(server, "engine", Engine(tmp_path))
     with TestClient(server.app) as test_client:
         yield test_client
@@ -143,3 +148,25 @@ def test_startup_closes_a_stopped_runners_browsers_but_keeps_a_sign_in(tmp_path,
     WORKFLOWS.update(saved)
     assert released == [frozenset({"person-is-here"})]  # the sign-in browser is kept open
     assert "Closed 2 browser session(s)" in capsys.readouterr().out
+
+
+def test_a_generated_secret_is_served_only_while_the_run_hands_it_over(client):
+    sign_in(client)
+    approve = client.post("/v1/runs", json={"workflow": "approve_me", "input": {}}).json()["id"]
+    settle(client, approve, "awaiting_user_input")
+    assert client.get(f"/v1/runs/{approve}/secret").status_code == 404  # an approval hands nothing over
+    client.post(f"/v1/workflows/resume/{approve}", json={"user_response": "approved"})
+    settle(client, approve, "completed")
+
+    run_id = client.post("/v1/runs", json={"workflow": "hand_it_over", "input": {}}).json()["id"]
+    paused = settle(client, run_id, "awaiting_user_input")
+    assert paused["pause"]["handover"] == "value"
+    answer = client.get(f"/v1/runs/{run_id}/secret")
+    assert answer.status_code == 200
+    assert answer.json() == {"field": "value", "value": "generated-value-789"}
+    assert answer.headers["cache-control"] == "no-store"
+    assert "generated-value-789" not in json.dumps(client.get(f"/v1/runs/{run_id}/events").json())
+    assert "generated-value-789" not in json.dumps(client.get(f"/v1/runs/{run_id}").json())
+    client.post(f"/v1/workflows/resume/{run_id}", json={"user_response": "approved"})
+    assert settle(client, run_id, "completed")["output"] == "created"
+    assert client.get(f"/v1/runs/{run_id}/secret").status_code == 404  # gone once the run ends

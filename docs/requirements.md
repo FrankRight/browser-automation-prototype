@@ -1,6 +1,6 @@
 # Requirements: `create_secret` on a stand-in runtime
 
-The next step for the prototype is to run a browser workflow the way AGNT5 will, from a run page that looks like Studio's. A workflow called `create_secret` opens a live browser in the page for a person to sign in. It then carries on by itself, pauses for a "yes" before it writes, and creates a project secret in Studio.
+The next step for the prototype is to run a browser workflow the way AGNT5 will, from a run page that looks like Studio's. A workflow called `create_secret` opens a live browser in the page for a person to sign in. It then carries on by itself, pauses for a "yes" before it writes, and creates a project secret in Studio with a value it generated. Last, it pauses while the person copies that value.
 
 The workflow is written against a small local stand-in for the AGNT5 runtime. It uses the same programming model, event names and resume route, so moving it onto AGNT5 later is a swap, not a rewrite.
 
@@ -34,6 +34,7 @@ FastAPI and uvicorn, the two new Python dependencies.
 * `POST /v1/runs` starts a run; `GET /v1/runs` and `GET /v1/runs/{id}` list runs and show one.
 * `GET /v1/runs/{id}/stream` streams a run's events (server-sent events): its history first, then live.
 * `POST /v1/workflows/resume/{run_id}` with `{"user_response": …}` answers a pause. That's AGNT5's resume route; the others follow its naming.
+* `GET /v1/runs/{id}/secret` returns the generated value, only while the run waits for the person to copy it. It's never cached, and answers 404 otherwise.
 * `GET /v1/runs/{id}/browser` returns the live view link, only while the run waits on a sign-in. It's never cached, and answers 404 otherwise.
 * **Access:** it listens on localhost only and needs a token created at start, because the live view link controls a signed-in browser.
 
@@ -44,28 +45,30 @@ FastAPI and uvicorn, the two new Python dependencies.
   * `workflow.step.started`, `workflow.step.completed`, `workflow.step.failed`, `workflow.step.paused`
   * `approval.requested`
   * `progress.update`, for the model's actions
-* **Two new ones,** which double as proposals for AGNT5: `browser.takeover.started` and `browser.takeover.ended`. Neither carries the link.
+* **Four new ones,** which double as proposals for AGNT5: `browser.takeover.started` and `browser.takeover.ended`, and `secret.handover.started` and `secret.handover.ended`. None carries the link or the value.
 
 ## 5. The workflow
 
-Input: the name (UPPER_SNAKE_CASE), the environments and the value.
+Input: the name (UPPER_SNAKE_CASE) and the environment: All Environments, production or staging. The runner generates the value (43 random characters) unless a run gives one.
 
 1. `check_login`: open Secrets with the saved profile and see whether Studio is signed in.
 2. **If signed out:** open an interactive browser on the sign-in page, pause with "Sign in to Studio, then continue", then close the browser to save the login. Up to 3 tries.
 3. `look_1`: search for the name. If it's already there, stop with `exists`.
 4. **Approval pause:** "Create secret NAME in PROJECT for ENVIRONMENTS?"
 5. `create`: check again, then fill in the dialog. The model types the placeholder `{{value}}`, and the runner sends the real value in its place.
-6. `read_back`: search again. The result is `created`, or `unclear`, which pauses for the person to check Studio.
+6. `read_back`: search again. If Studio doesn't list it, the run pauses for the person to check Studio.
+7. **Copy pause:** the page shows the value, masked until the person shows it, with a Copy button. "I've copied it" ends the run.
 
 The run's output is the name, the environments and the status, never the value. The saved input holds only the placeholder; the value itself stays in a private file (mode 600) until the run ends.
 
 ## 6. Web app
 
 * **Stack:** Vite, React 19, TypeScript, Tailwind v4, Radix and lucide icons, all open source and the same as Studio's.
-* **Runs list and start form:** the form matches Studio's Add Secret: name forced to upper case, masked value with a reveal button, and an environment picker.
+* **Runs list and start form:** the form asks for the name, forced to upper case, and the environment, from a select of All environments, Production and Staging. The value is generated.
 * **Run page:** a status header, the step tree on the left with details on the right, and the model's actions under each step.
 * **Approval card:** like Studio's amber "Awaiting your approval", with Approve and Reject.
-* **Browser panel:** opens on `browser.takeover.started`, fetches the link only then, and keeps it out of storage and the address bar. It closes on Continue.
+* **Browser drawer:** opens on `browser.takeover.started`, pushing the steps aside, fetches the link only then, and keeps it out of storage and the address bar. It closes on Continue.
+* **Copy card:** shown on the copy pause. It fetches the value only then, keeps it masked until the person shows it, and copies it without showing it.
 
 ## 7. Security
 

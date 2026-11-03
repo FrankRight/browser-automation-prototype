@@ -45,14 +45,15 @@ pnpm start   # or build the page once and have the runner serve it, on one port
 
 The runner prints an address ending in `#token=…`. Open it once in your browser. On a remote machine, forward port 5173 for `pnpm dev`, or 8790 for `pnpm start`. The page signs in with the token and drops it from the address. The runner listens on localhost only, and every request needs that sign-in, because the page can hand out the live view link of a signed-in browser.
 
-Press **Run create_secret**, enter the secret's name, value and environments, and follow the run:
+Press **New run**, enter the secret's name, pick its environment (All environments, Production or Staging), and follow the run:
 
 1. **Sign in, if needed.** If Studio is signed out, a live browser slides open beside the steps, pushing them aside. Sign in there, then press **Continue**, and it slides shut. The model doesn't see the screen while you use it.
 2. **Behind the scenes.** The run looks for the secret, showing each step's progress and the model's actions.
 3. **Approve.** It pauses until you choose **Create secret** or **Don't create**.
-4. **Done.** It adds the secret through Studio's dialog, checks that Studio lists it, and finishes.
+4. **Create.** It adds the secret through Studio's dialog and checks that Studio lists it.
+5. **Copy.** The run pauses one last time and shows the new value, masked until you choose to show it, with a **Copy** button. Press **I've copied it** to finish. The value is then deleted from this machine; Studio keeps the secret.
 
-The value never reaches the model or the run's records. The model types the placeholder `{{value}}` into Studio's masked value field, and the browser types the real value in its place. The run records the placeholder, and the value waits in a private file (mode 600) until the run ends.
+The runner generates the value: 43 random characters. It never reaches the model or the run's records. The model types the placeholder `{{value}}` into Studio's masked value field, and the browser types the real value in its place. The run records the placeholder, and the value waits in a private file (mode 600) until the run ends. The page can fetch it only while the run waits on the copy step.
 
 To try the sign-in, sign the saved profile out of Studio first: `cd apps/runner && uv run python sign_out.py`.
 
@@ -65,7 +66,7 @@ To run a second runner alongside, such as for a test, give it its own port and i
 `apps/runner/runtime` runs workflows the way AGNT5 does, on one machine. A workflow is an async function in the AGNT5 SDK's shape:
 
 ```python
-@workflow("create_secret", secret_inputs=("value",))
+@workflow("create_secret", secret_inputs=("value",), generated_inputs={"value": new_value})
 async def create_secret(ctx, name: str, environments: list[str], value: str):
     look = await ctx.step("look_1", look_for_secret, profile, name)
     decision = await ctx.wait_for_user("Create the secret?", input_type="approval")
@@ -73,8 +74,12 @@ async def create_secret(ctx, name: str, environments: list[str], value: str):
 
 - **`ctx.step(name, fn, *args)`** runs `fn` once and records its result. After a pause or a restart, the workflow runs again from the top, and finished steps return their recorded results without running.
 - **`ctx.wait_for_user(...)`** pauses the run until a person answers. An approval answers `"approved"` or `"rejected"`, as Studio's card does.
-- **`ctx.take_over_browser(session_id, question)`** is the one addition to the SDK's shape: a pause while a person uses a live browser.
-- **Events use AGNT5's names** (`workflow.step.started`, `approval.requested`, `run.paused` and so on), and the resume route is AGNT5's own: `POST /v1/workflows/resume/{run_id}`.
+- **Two pauses are additions to the SDK's shape:**
+  - `ctx.take_over_browser(session_id, question)` pauses while a person uses a live browser.
+  - `ctx.hand_over_secret(field, question)` pauses while a person copies a secret, such as the generated value.
+
+  The page fetches what each one needs from the runner, the live view link or the value, and only during that pause. Neither ever goes into the run's record.
+- **Events use AGNT5's names** (`workflow.step.started`, `approval.requested`, `run.paused` and so on), and the resume route is AGNT5's own: `POST /v1/workflows/resume/{run_id}`. The two new pauses add `browser.takeover.*` and `secret.handover.*`.
 - **Each run's events are kept in `apps/runner/state/runs/<id>/events.jsonl`** (git-ignored). Before writing an event, the runtime checks that it holds no secret input, live view link or cookie, and fails the run rather than record one.
 
 ## Run the Studio check

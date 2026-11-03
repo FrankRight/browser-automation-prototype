@@ -18,6 +18,8 @@ export const EVENT_TYPES = [
   "progress.update",
   "browser.takeover.started",
   "browser.takeover.ended",
+  "secret.handover.started",
+  "secret.handover.ended",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -73,6 +75,8 @@ export type RunStatus = "queued" | "running" | "awaiting_user_input" | "complete
 export interface Pause extends ApprovalRequested {
   /** True while a person should use a live browser; the run page then shows it. */
   takeover: boolean;
+  /** The secret input a person should copy now, such as "value"; the page fetches it from the runner. */
+  handover: string | null;
 }
 
 export interface Run {
