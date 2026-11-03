@@ -8,9 +8,11 @@ actions, described from the structured action, never from the model's text, whic
 repeat something private from the screen. Typed text is shown only when the caller says
 it's safe to; otherwise just its length.
 """
+import secrets
+import threading
 import time
 
-from openai import OpenAI
+from openai import APIConnectionError, OpenAI
 
 from config import openai_key
 from progress import duration, progress
@@ -28,6 +30,8 @@ KEYS = {
 }
 BUTTONS = {"left": "left", "right": "right", "wheel": "middle", "middle": "middle", "back": "back", "forward": "forward"}
 MODIFIERS = {"Control": "Ctrl", "Meta": "Cmd", "Alt": "Alt"}
+TURN_TIMEOUT_S = 60  # healthy turns took 31 s at most (191 measured); one still going after this is given up and tried again
+TURN_TRIES = 3
 
 
 class SafetyCheck(Exception):
@@ -92,18 +96,57 @@ def _describe(action, show_typed) -> str:
     return "take a screenshot" if kind == "screenshot" else kind
 
 
+def _opening(goal: str, screen: str) -> list[dict]:
+    """The goal, then the screen as the answer to a screenshot the model asked for. Shown the
+    screen as a plain image instead, the model spends its first turn asking for a screenshot;
+    given it this way, it acts straight away."""
+    call_id = secrets.token_hex(12)
+    return [
+        {"role": "user", "content": [{"type": "input_text", "text": goal}]},
+        {"type": "computer_call", "id": f"cu_{call_id}", "call_id": f"call_{call_id}", "status": "completed",
+         "pending_safety_checks": [], "actions": [{"type": "screenshot"}]},
+        {"type": "computer_call_output", "call_id": f"call_{call_id}",
+         "output": {"type": "computer_screenshot", "image_url": screen, "detail": "original"}},
+    ]
+
+
+def _stream(ai, request: dict, on_text, outcome: dict, given_up: threading.Event) -> None:
+    """One try at a streamed turn: puts the finished response, or the error, in outcome."""
+    text = ""
+    try:
+        with ai.responses.create(**request, stream=True) as events:
+            for event in events:
+                if given_up.is_set():  # this try ran out of time, and another has started
+                    return
+                if event.type == "response.output_text.delta":
+                    text += event.delta
+                    on_text(text)
+                elif event.type in ("response.completed", "response.failed", "response.incomplete"):
+                    outcome["response"] = event.response
+                    return
+    except Exception as error:
+        outcome["error"] = error
+
+
 def _respond(ai, request: dict, on_text):
     """responses.create, streamed so the terminal can follow the model while it writes its
-    answer. Returns the finished response, as create does."""
-    text = ""
-    with ai.responses.create(**request, stream=True) as stream:
-        for event in stream:
-            if event.type == "response.output_text.delta":
-                text += event.delta
-                on_text(text)
-            elif event.type in ("response.completed", "response.failed", "response.incomplete"):
-                return event.response
-    raise TimeoutError("the model's answer stopped before it was finished")
+    answer. Returns the finished response, as create does.
+
+    A stream can stay open without ever finishing, which no read timeout catches, so each
+    try runs on its own thread and is given up after TURN_TIMEOUT_S. A try that times out
+    or loses its connection is tried again; any other API error is raised, as create's is.
+    """
+    for _ in range(TURN_TRIES):
+        outcome, given_up = {}, threading.Event()
+        worker = threading.Thread(target=_stream, args=(ai, request, on_text, outcome, given_up), daemon=True)
+        worker.start()
+        worker.join(TURN_TIMEOUT_S)
+        given_up.set()
+        if "response" in outcome:
+            return outcome["response"]
+        if "error" in outcome and not isinstance(outcome["error"], APIConnectionError):
+            raise outcome["error"]
+    raise TimeoutError(f"the model didn't finish a turn in {TURN_TRIES} tries of {TURN_TIMEOUT_S} s")
 
 
 def work_screen(steel, session_id, goal: str, *, show_typed=frozenset(), answer_progress=None,
@@ -129,10 +172,7 @@ def work_screen(steel, session_id, goal: str, *, show_typed=frozenset(), answer_
         thinking.append(time.monotonic() - started)
         return response
 
-    response = turn(input=[{"role": "user", "content": [
-        {"type": "input_text", "text": goal},
-        {"type": "input_image", "image_url": _screen(steel, session_id), "detail": "original"},
-    ]}])
+    response = turn(input=_opening(goal, _screen(steel, session_id)))
     for _ in range(max_turns):
         if time.monotonic() > deadline:
             raise TimeoutError(f"the model didn't finish within {budget_s:.0f} s")
