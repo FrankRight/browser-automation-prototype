@@ -6,12 +6,29 @@
 
 /* Studio's look: its type, its colour tokens and square corners. Values only; no Studio code. */
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 @theme {
   --font-sans: "Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Poppins", "Instrument Sans Variable", system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Motion: short and quiet, so the page feels live without drawing the eye. */
+  --animate-fade-in: fade-in 160ms ease-out both;
+  --animate-fade-out: fade-out 140ms ease-in both;
+  --animate-rise-in: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-scale-in: scale-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-scale-out: scale-out 140ms ease-in both;
+  --animate-slide-in-right: slide-in-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-slide-out-right: slide-out-right 180ms ease-in both;
+  --animate-progress: progress 1.4s ease-in-out infinite;
+
+  @keyframes fade-in { from { opacity: 0; } }
+  @keyframes fade-out { to { opacity: 0; } }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes scale-in { from { opacity: 0; transform: scale(0.97); } }
+  @keyframes scale-out { to { opacity: 0; transform: scale(0.98); } }
+  @keyframes slide-in-right { from { transform: translateX(100%); } }
+  @keyframes slide-out-right { to { transform: translateX(100%); } }
+  @keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 }
 
 @theme inline {
@@ -59,25 +76,6 @@
   color-scheme: light;
 }
 
-.dark {
-  --background: #0a0b0d;
-  --foreground: #e4e4e5;
-  --card: #1c1f23;
-  --muted: #1c1f23;
-  --muted-foreground: #acadaf;
-  --primary: #f1f2f2;
-  --primary-foreground: #1c1f23;
-  --accent: color-mix(in oklab, #ffffff 8%, transparent);
-  --destructive: #ff6b61;
-  --destructive-foreground: #0a0b0d;
-  --border: #25272a;
-  --ring: #f1f2f2;
-  --warning: oklch(0.69 0.1 75);
-  --warning-foreground: oklch(0.08 0 0);
-  --success: oklch(0.67 0.17 145);
-  --info: oklch(0.69 0.15 255);
-  color-scheme: dark;
-}
 
 body {
   @apply bg-background text-foreground font-sans text-sm antialiased;
@@ -85,4 +83,14 @@ body {
 
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-ring;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

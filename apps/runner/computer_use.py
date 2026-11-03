@@ -186,7 +186,8 @@ def work_screen(steel, session_id, goal: str, *, show_typed=frozenset(), answer_
             raise TimeoutError(f"the model didn't finish within {budget_s:.0f} s")
         calls = [item for item in response.output if item.type == "computer_call"]
         if not calls:
-            progress.event(f"thought {duration(thinking[-1])} → answered")
+            progress.event(f"thought {duration(thinking[-1])} → answered", thought_ms=round(thinking[-1] * 1000),
+                           actions=[{"type": "answer", "label": "Answered"}])
             progress.note(f"{len(thinking)} turn{'s' * (len(thinking) != 1)}, {duration(sum(thinking))} thinking")
             return response.output_text
         outputs = []
@@ -194,7 +195,9 @@ def work_screen(steel, session_id, goal: str, *, show_typed=frozenset(), answer_
             if getattr(call, "pending_safety_checks", None):
                 raise SafetyCheck("; ".join(c.message or c.code for c in call.pending_safety_checks))
             actions = getattr(call, "actions", None) or [call.action]
-            progress.event(f"thought {duration(thinking[-1])} → " + ", ".join(_describe(a, show_typed) for a in actions))
+            described = [_describe(a, show_typed) for a in actions]
+            progress.event(f"thought {duration(thinking[-1])} → " + ", ".join(described), thought_ms=round(thinking[-1] * 1000),
+                           actions=[{"type": a.type, "label": text} for a, text in zip(actions, described)])
             for action in actions:
                 _perform(steel, session_id, action)
             outputs.append({"type": "computer_call_output", "call_id": call.call_id, "output": {

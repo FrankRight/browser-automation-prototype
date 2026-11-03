@@ -38,7 +38,7 @@ describe("buildRunView", () => {
       ev("run.paused", "wait_for_user_1"),
     ]);
     expect(view.takeover).toBe(false);
-    expect(stepLabel(view.waiting!)).toBe("Approval");
+    expect(stepLabel(view.waiting!)).toBe("Your approval");
   });
 
   it("shows a failed run and its failed step", () => {

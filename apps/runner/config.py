@@ -8,6 +8,8 @@ Keys are read inside the program and never printed.
     STUDIO_API_URL      the AGNT5 API behind that Studio, e.g. https://api.agnt5.com
     STUDIO_API_KEY      an AGNT5 API key that can read the project, or a file named by STUDIO_API_KEY_FILE
     BROWSER_TIME_ZONE   the time zone Studio's times are shown in (default America/New_York, Steel's)
+    RUNNER_STATE_DIR    where runs and the profile ID are kept (default state/ here), so a second
+                        runner, such as a test's, can keep its runs apart
     STEEL_API_KEY       or a file named by STEEL_KEY_FILE (default ~/.steel-key)
     OPENAI_API_KEY      or a dotenv file that sets it, named by OPENAI_ENV_FILE
 """
@@ -17,7 +19,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 SCREEN = {"width": 1280, "height": 800}
-STATE_DIR = HERE / "state"  # git-ignored; holds the Steel profile ID
+STATE_DIR = Path(os.environ.get("RUNNER_STATE_DIR") or HERE / "state").expanduser()  # git-ignored by default
 PROFILE_FILE = STATE_DIR / "profile.json"
 
 

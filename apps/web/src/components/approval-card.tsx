@@ -33,7 +33,7 @@ export function ApprovalCard({
   const ordered = [...request.options].sort((a, b) => Number(POSITIVE.test(a.id)) - Number(POSITIVE.test(b.id)));
 
   return (
-    <section className="border border-warning/40" aria-label="Awaiting your answer">
+    <section className="animate-rise-in border border-warning/40 shadow-sm" aria-label="Awaiting your answer">
       <div className="flex items-center gap-2 bg-warning/15 px-4 py-2 text-sm font-medium text-warning">
         <PauseCircle className="size-4" aria-hidden="true" />
         {request.input_type === "approval" ? "Awaiting your approval" : "Waiting for your answer"}
@@ -41,7 +41,8 @@ export function ApprovalCard({
       <div className="space-y-4 p-4">
         <Question text={request.question} />
         {problem && <p className="text-sm text-destructive">{problem}</p>}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {sending && <span className="mr-auto animate-fade-in text-xs text-muted-foreground">Sending your answer…</span>}
           {ordered.map((option) => {
             const value = response(option);
             const positive = POSITIVE.test(option.id);

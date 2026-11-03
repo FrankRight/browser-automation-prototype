@@ -92,7 +92,7 @@ def open_session(*, profile_id=None, persist_profile=False, interactive=False, t
     with progress.step("Starting a browser on Steel"):
         session = steel.sessions.create(**options)
     try:
-        progress.event(f"Watch it on Steel: {session.session_viewer_url}")  # needs a Steel sign-in
+        progress.event(f"Watch it on Steel: {session.session_viewer_url}", link=session.session_viewer_url)  # needs a Steel sign-in
         yield steel, session
     finally:
         with progress.step("Closing the browser"):

@@ -44,11 +44,23 @@ const LABELS: [RegExp, string][] = [
 
 /** A step's name for people. Pauses are named for what they ask. */
 export function stepLabel(step: StepView): string {
-  if (step.kind === "pause") return step.request?.input_type === "approval" ? "Approval" : "Question for you";
+  if (step.kind === "pause") return step.request?.input_type === "approval" ? "Your approval" : "A question for you";
   const known = LABELS.find(([pattern]) => pattern.test(step.key));
   if (known) return known[1];
   const words = step.key.replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Steps worth showing: an instant step with nothing to say, such as loading the profile, is left out. */
+export function visibleSteps(steps: StepView[]): StepView[] {
+  return steps.filter(
+    (s) => !(s.kind === "step" && s.status === "completed" && s.progress.length === 0 && (s.durationMs ?? 0) < 1000),
+  );
+}
+
+/** The step a person should be looking at: the one waiting on them, else the one running, else the last. */
+export function activeStep(steps: StepView[]): StepView | undefined {
+  return steps.findLast((s) => s.status === "waiting") ?? steps.findLast((s) => s.status === "running") ?? steps.at(-1);
 }
 
 /** Folds a run's events, in order, into its steps and status: the same events Studio reads. */

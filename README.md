@@ -47,7 +47,7 @@ The runner prints an address ending in `#token=…`. Open it once in your browse
 
 Press **Run create_secret**, enter the secret's name, value and environments, and follow the run:
 
-1. **Sign in, if needed.** If Studio is signed out, a live browser opens over the page. Sign in there, then press **Continue**. The model doesn't see the screen while you use it.
+1. **Sign in, if needed.** If Studio is signed out, a live browser slides open beside the steps, pushing them aside. Sign in there, then press **Continue**, and it slides shut. The model doesn't see the screen while you use it.
 2. **Behind the scenes.** The run looks for the secret, showing each step's progress and the model's actions.
 3. **Approve.** It pauses until you choose **Create secret** or **Don't create**.
 4. **Done.** It adds the secret through Studio's dialog, checks that Studio lists it, and finishes.
@@ -57,6 +57,8 @@ The value never reaches the model or the run's records. The model types the plac
 To try the sign-in, sign the saved profile out of Studio first: `cd apps/runner && uv run python sign_out.py`.
 
 Runs survive a restart. Stop the runner mid-run and start it again, and the run carries on from its record. Finished steps don't run again, and the write looks before it acts, so a secret is never added twice.
+
+To run a second runner alongside, such as for a test, give it its own port and its own run records: `RUNNER_PORT=8791 RUNNER_STATE_DIR=/tmp/runner-state uv run python server.py`, with a copy of `state/profile.json` in that folder. Without its own records, a second runner would pick up the first one's runs.
 
 ## The stand-in runtime
 

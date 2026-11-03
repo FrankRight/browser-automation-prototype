@@ -1,5 +1,20 @@
 import type { RunStatus } from "@browser-prototype/contract";
-import { Check, CircleDashed, Loader2, PauseCircle, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  CircleDashed,
+  Clock,
+  Hand,
+  Keyboard,
+  Loader2,
+  MessageSquareText,
+  MousePointerClick,
+  Move,
+  MoveVertical,
+  PauseCircle,
+  Sparkles,
+  X,
+} from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import type { StepStatus } from "../lib/run-view";
@@ -21,7 +36,7 @@ export function Button({
     <button
       type="button"
       className={cn(
-        "inline-flex h-9 items-center justify-center gap-2 px-4 text-sm font-medium whitespace-nowrap transition-colors",
+        "inline-flex h-9 items-center justify-center gap-2 px-4 text-sm font-medium whitespace-nowrap transition-[background-color,color,opacity] duration-150",
         "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         BUTTON[variant],
         className,
@@ -42,7 +57,7 @@ const RUN_STATUS: Record<RunStatus, { label: string; tone: string }> = {
 export function StatusPill({ status }: { status: RunStatus }) {
   const { label, tone } = RUN_STATUS[status];
   return (
-    <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium", tone)}>
+    <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium transition-colors duration-300", tone)}>
       <span
         className={cn("size-1.5 rounded-full bg-current", status === "running" && "animate-pulse")}
         aria-hidden="true"
@@ -98,5 +113,32 @@ export function Linked({ text }: { text: string }) {
         ),
       )}
     </>
+  );
+}
+
+const ACTION_ICONS: Record<string, typeof MousePointerClick> = {
+  click: MousePointerClick,
+  double_click: MousePointerClick,
+  type: Keyboard,
+  keypress: Keyboard,
+  scroll: MoveVertical,
+  move: Move,
+  drag: Hand,
+  wait: Clock,
+  screenshot: Camera,
+  answer: MessageSquareText,
+};
+
+export function ActionIcon({ type }: { type: string }) {
+  const Icon = ACTION_ICONS[type] ?? Sparkles;
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+}
+
+/** A thin bar that moves while something runs, under a header. */
+export function Working() {
+  return (
+    <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden" role="presentation">
+      <div className="h-full w-1/3 animate-progress bg-info/70" />
+    </div>
   );
 }

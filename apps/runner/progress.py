@@ -151,10 +151,11 @@ class Progress:
                 if self.enabled and not self.tty:
                     self._print(detail, len(self.steps))
 
-    def event(self, text: str) -> None:
-        """Something that happened, kept on screen under the current step: a model action, a link to watch."""
+    def event(self, text: str, **detail) -> None:
+        """Something that happened, kept on screen under the current step: a model action, a link to watch.
+        `detail` reaches the run's events only, for the page to show in its own way."""
         with self.lock:
-            self._sink(kind="event", message=text, depth=len(self.steps))
+            self._sink(kind="event", message=text, depth=len(self.steps), **detail)
             if self.enabled:
                 self._print(f"· {text}", len(self.steps))
 

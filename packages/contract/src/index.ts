@@ -61,6 +61,11 @@ export interface ProgressUpdate {
   depth: number;
   duration_ms?: number;
   note?: string;
+  /** For a model's turn: how long it thought, and what it did, each action already described. */
+  thought_ms?: number;
+  actions?: { type: string; label: string }[];
+  /** A page to open, such as the browser session on Steel's dashboard (behind a Steel sign-in). */
+  link?: string;
 }
 
 export type RunStatus = "queued" | "running" | "awaiting_user_input" | "completed" | "failed";
