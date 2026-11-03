@@ -1,0 +1,9 @@
+[project]
+name = "browser-prototype"
+version = "0.1.0"
+description = "Use a website through a visible browser on Steel, with an OpenAI computer-use model reading the screen"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=3.42.1",
+    "steel-sdk>=0.19.0",
+]
